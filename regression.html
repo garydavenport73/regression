@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Loader and Multivariable Regression</title>
+<style>
+/* RESET STARTS */
+html {
+    box-sizing: border-box;
+    font-size: 16px;
+}
+
+*,
+*:before,
+*:after {
+    box-sizing: inherit;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background-color: whitesmoke; /* Match the previous program's background */
+}
+
+.container {
+    max-width: 800px;
+    margin: auto;
+    padding: 20px;
+    border: 1px solid grey; /* Add border for the container */
+    border-radius: 5px; /* Rounded corners */
+    background-color: darkgrey; /* White background for the container */
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+}
+
+h1 {
+    text-align: center;
+
+
+    margin-bottom: 20px;
+    padding: 10px; 
+
+    color: black;
+    background-color: lightgrey; 
+    border: 1px solid dimgrey;
+    border-radius: 5px; 
+    font-family: Arial, Helvetica, sans-serif;
+  font-size: 2rem;
+  font-weight:normal;
+}
+
+textarea {
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    border: 1px solid grey;
+    font-family: 'Courier New', Courier, monospace; /* Monospace font for text areas */
+    font-size: 14px; /* Font size for text areas */
+    padding: 10px; /* Padding for text areas */
+}
+
+input[type="file"] {
+    display: none; /* Hide the file input */
+}
+
+
+
+button {
+    /* margin: 5px 0; */
+    border-radius: 5px;
+    /* border: 1px solid grey;
+    background-color: whitesmoke;
+    color: black;  */
+    padding: 3px 5px; /* Add padding for better appearance */
+    cursor: pointer; /* Pointer cursor on hover */
+margin-bottom: 5px;
+    color: black;
+    background-color: lightgrey; 
+    border: 1px solid dimgrey;
+}
+
+button:hover {
+    background-color: grey; /* Darker grey on hover */
+}
+
+#resultOutput {
+    height: 200px; /* Set a fixed height for the result output */
+}
+
+#hiddenName {
+    display: none; /* Keep hidden inputs */
+}
+
+/* Additional styles for layout */
+.fixed-size-scroll {
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 5px;
+    border: 1px solid grey;
+    margin-bottom: 10px;
+}
+
+footer {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    background-color: transparent;
+    color: grey;
+    text-align: center;
+    transform: translate(-50%, 0%);
+}
+
+</style>
+</head>
+<body>
+    <div class="container">
+        <input id="hiddenName" value="y">;
+        <h1>CSV Loader and Regression Analysis</h1>
+        <textarea id="csvInput" placeholder="Load your CSV here...Independent variables are first.  The last column is the dependent variable." rows="10" spellcheck="false"></textarea>
+        <input type="file" id="fileInput" accept=".csv">
+        <button id="loadButton">Load CSV</button>
+        <button id="computeButton">Compute</button>
+        <button id="clearButton">Clear All Fields</button>
+        
+        <textarea id="resultOutput" placeholder="Results will be shown here..." rows="32" spellcheck="false"></textarea>
+        <button id="saveButton">Save Results</button><button id="copyButton">Copy to Clipboard</button>
+    </div>
+<script>
+function keepOnlyASCIICharacters(input) {
+    // Regular expression to match non-ASCII characters
+    const nonASCIIRegex = /[^\x00-\x7F]/g;
+
+    // Replace non-ASCII characters with an empty string
+    return input.replace(nonASCIIRegex, '');
+}
+
+function keepOnlyExtendedAscii(inputString) {
+    let result = '';
+    for (let i = 0; i < inputString.length; i++) {
+        let charCode = inputString.charCodeAt(i);
+        // Check if the character code is within the extended ASCII range
+        if (charCode >= 0 && charCode <= 255) {
+            result += inputString[i];
+        }
+    }
+    return result;
+}
+
+function keepPrintableAscii(input) {
+    let result = '';
+    // Loop through each character in the input string
+    for (let i = 0; i < input.length; i++) {
+        const charCode = input.charCodeAt(i);
+
+        // Check if the character is printable ASCII (32-126)
+        if (charCode >= 32 && charCode <= 126) {
+            result += input[i]; // Append the character to the result
+        }
+    }
+
+    return result; // Return the filtered string
+}
+
+function keepPrintableExtendedAscii(input) {
+    let result = '';
+
+    // Loop through each character in the input string
+    for (let i = 0; i < input.length; i++) {
+        const charCode = input.charCodeAt(i);
+
+        // Check if the character is printable ASCII (32-126), printable extended ASCII (160-255))
+        if ((charCode >= 32 && charCode <= 126) || (charCode >= 160 && charCode <= 255)) {
+            result += input[i]; // Append the character to the result
+        }
+    }
+
+    return result; // Return the filtered string
+}
+
+function keepPrintableAsciiWithNewLine(input) {
+    let result = '';
+
+    // Loop through each character in the input string
+    for (let i = 0; i < input.length; i++) {
+        const charCode = input.charCodeAt(i);
+
+        // Check if the character is printable ASCII (32-126) or a newline (10)
+        if ((charCode >= 32 && charCode <= 126) || charCode === 10) {
+            result += input[i]; // Append the character to the result
+        }
+    }
+
+    return result; // Return the filtered string
+}
+
+function keepPrintableExtendedAsciiWithNewLine(input) {
+    let result = '';
+
+    // Loop through each character in the input string
+    for (let i = 0; i < input.length; i++) {
+        const charCode = input.charCodeAt(i);
+
+        // Check if the character is printable ASCII (32-126), printable extended ASCII (160-255), or a newline (10)
+        if ((charCode >= 32 && charCode <= 126) || (charCode >= 160 && charCode <= 255) || charCode === 10) {
+            result += input[i]; // Append the character to the result
+        }
+    }
+
+    return result; // Return the filtered string
+}
+
+function _shouldConvertToNumber(value) {
+    // Check if the value is only whitespace
+    if (value.trim() === '') {
+        return false; // Return false for whitespace
+    }
+    // Check if the value can be converted to a number
+    return !isNaN(Number(value)); // Return true if it's a number, false otherwise
+}
+
+function convertColumnsToNumbers(input, usingHeaders = true) {
+    // Check if the input is valid
+    if (!Array.isArray(input) || input.length === 0) {
+        return input; // Return as is if not valid
+    }
+
+    let startRow;
+    let header;
+    let numColumns;
+    let result;
+
+    // Determine the starting row and header based on usingHeaders
+    if (usingHeaders) {
+        startRow = 1;
+        header = input[0];
+        numColumns = header.length;
+        result = [header]; // Start with the header row
+    } else {
+        startRow = 0;
+        numColumns = input[0].length;
+        result = []; // No header row
+    }
+
+    // Iterate through each column
+    for (let col = 0; col < numColumns; col++) {
+        let allNumeric = true; // Flag to check if all values are numeric
+
+        // First loop: Check if all values in the column are numeric
+        for (let row = startRow; row < input.length; row++) {
+            const value = input[row][col];
+            if (!_shouldConvertToNumber(value)) {
+                allNumeric = false; // Set flag to false if any value is not numeric
+                break; // Exit the loop early if a non-numeric value is found
+            }
+        }
+
+        // Second loop: Replace values based on the allNumeric flag
+        for (let row = startRow; row < input.length; row++) {
+            result[row] = result[row] || []; // Ensure the row exists
+            const value = input[row][col];
+            if (allNumeric) {
+                result[row][col] = Number(value); // Convert to number
+            } else {
+                result[row][col] = value; // Keep original string
+            }
+        }
+    }
+
+    return result;
+}
+
+function replaceWhitespaceWithNull(data, usingHeaders) {
+    // Create a new array to hold the modified data
+    let newData = [];
+
+    // Check if usingHeaders is true and add the first row to newData
+    if (usingHeaders && data.length > 0) {
+        newData.push(data[0]); // Add the headers without processing
+    }
+
+    // Iterate through the outer array (rows), starting from the second row if usingHeaders is true
+    for (let i = usingHeaders ? 1 : 0; i < data.length; i++) {
+        // Create a new row for the modified data
+        let newRow = [];
+
+        // Iterate through the inner array (cells)
+        for (let j = 0; j < data[i].length; j++) {
+            // Check if the cell contains only whitespace
+            if (data[i][j].trim() === "") {
+                // Replace with the string "null"
+                newRow.push("null");
+            } else {
+                // Otherwise, keep the original value
+                newRow.push(data[i][j]);
+            }
+        }
+
+        // Add the modified row to the new data array
+        newData.push(newRow);
+    }
+
+    // Return the new array
+    return newData;
+}
+
+// Function to determine the maximum column count
+function getMaxColumnCount(rows) {
+    let maxCount = 0;
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.length > maxCount) {
+            maxCount = row.length;
+        }
+    }
+    return maxCount;
+}
+
+function validateCSV(text) {
+    const existingTokens = [];
+
+    // Step 1: Determine the correct line terminator
+    const lineTerminator = determineLineTerminator(text);
+
+    // Step 2: Generate a token for the delimiter
+    const delimiterToken = tokenMaker(text, existingTokens, 16);
+
+    // Step 3: Generate a token for line terminators
+    const lineTerminatorToken = tokenMaker(text, existingTokens, 16);
+
+    // Step 4: Replace line terminators not in quotes with the lineTerminator token
+    text = replaceUnquotedLineTerminators(text, lineTerminatorToken);
+
+    // Step 5: Split the modified text by the line terminator token to get the lines
+    const lines = text.split(lineTerminatorToken);
+
+    // Step 6: Replace commas not in quotes with the delimiter token
+    for (let i = 0; i < lines.length; i++) {
+        lines[i] = replaceUnquotedCommas(lines[i], delimiterToken); // Modify the line directly
+    }
+
+    // Step 7: Check if there are more than one column
+    const hasMoreThanOneColumn = moreThanOneColumn(lines, delimiterToken);
+
+    // Step 8: Filter out blank lines if there are multiple columns
+    for (let i = lines.length - 1; i >= 0; i--) {
+        // If there are multiple columns, skip blank lines without commas
+        if (hasMoreThanOneColumn && lines[i].trim() === "") {
+            lines.splice(i, 1); // Remove the blank line
+        }
+    }
+
+    // Step 9: Split the modified lines by the delimiter token
+    const rows = []; // Renamed from parsedRows to rows
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const row = line.split(delimiterToken); // Use split on the modified line
+        rows.push(row);
+    }
+
+    // Step 10: Get the maximum column count
+    const maxColumnCount = getMaxColumnCount(rows);
+    const errors = [];
+
+    // Step 11: Check for rows with incorrect column counts
+    for (let i = 0; i < rows.length; i++) {
+        const currentColumnCount = rows[i].length;
+        if (currentColumnCount !== maxColumnCount) {
+            errors.push(`Row ${i + 1} has ${currentColumnCount} columns, expected ${maxColumnCount}.`);
+        }
+    }
+
+    // Step 12: Check for unbalanced quotes in individual cells
+    for (let i = 0; i < rows.length; i++) {
+        const currentRow = rows[i];
+        for (let j = 0; j < currentRow.length; j++) {
+            const cell = currentRow[j];
+            const cellQuoteCount = (cell.match(/"/g) || []).length;
+            if (cellQuoteCount % 2 !== 0) {
+                errors.push(`Row ${i + 1}, Cell ${j + 1} has an unbalanced number of quotes.`);
+            }
+        }
+    }
+
+    // Step 12.5: Check for consistent use of quotes
+    // Check for consistent use of quotes (first pass)
+    // Check for consistent use of quotes (first pass)
+    for (let i = 0; i < rows.length; i++) {
+        const currentRow = rows[i];
+        for (let j = 0; j < currentRow.length; j++) {
+            const cell = currentRow[j];
+            const startsWithQuote = cell.startsWith('"');
+            const endsWithQuote = cell.endsWith('"');
+
+            // Check for consistent use of quotes (first pass)
+            if (startsWithQuote && !endsWithQuote) {
+                errors.push(`Row ${i + 1}, Cell ${j + 1} starts with a quote but does not end with one. First character: '${cell.charAt(0)}' (char code: ${cell.charCodeAt(0)}), Last character: '${cell.charAt(cell.length - 1)}' (char code: ${cell.charCodeAt(cell.length - 1)})`);
+            }
+            if (!startsWithQuote && endsWithQuote) {
+                errors.push(`Row ${i + 1}, Cell ${j + 1} ends with a quote but does not start with one. First character: '${cell.charAt(0)}' (char code: ${cell.charCodeAt(0)}), Last character: '${cell.charAt(cell.length - 1)}' (char code: ${cell.charCodeAt(cell.length - 1)})`);
+            }
+        }
+    }
+    // Second pass: Check for unescaped quotes
+    for (let i = 0; i < rows.length; i++) {
+        const currentRow = rows[i];
+        for (let j = 0; j < currentRow.length; j++) {
+            const cell = currentRow[j];
+            let trimmedCell = cell;
+
+            // Remove leading and trailing quotes if they exist
+            if (trimmedCell.startsWith('"')) {
+                trimmedCell = trimmedCell.slice(1); // Remove leading quote
+            }
+            if (trimmedCell.endsWith('"')) {
+                trimmedCell = trimmedCell.slice(0, -1); // Remove trailing quote
+            }
+
+            // Check for unescaped quotes in the trimmed cell (manual check)
+            let unescapedQuoteFound = false;
+            let previousCharWasQuote = false;
+
+            for (let char of trimmedCell) {
+                if (char === '"') {
+                    if (!previousCharWasQuote) {
+                        unescapedQuoteFound = true; // Found an unescaped quote
+                        break;
+                    }
+                    previousCharWasQuote = true; // Current quote is escaped
+                } else {
+                    previousCharWasQuote = false; // Reset if current char is not a quote
+                }
+            }
+
+            if (unescapedQuoteFound) {
+                errors.push(`Row ${i + 1}, Cell ${j + 1} contains unescaped quotes.`);
+            }
+        }
+    }
+
+    // Step 13: Return validation results
+    if (errors.length > 0) {
+        return {
+            valid: false,
+            errors: errors
+        };
+    } else {
+        return {
+            valid: true,
+            errors: []
+        };
+    }
+}
+
+function arrayToCSV(data, lineTerminator = '\n') {
+    const csvRows = [];
+
+    for (let i = 0; i < data.length; i++) {
+        const csvRow = [];
+
+        for (let j = 0; j < data[i].length; j++) {
+            const cell = data[i][j];
+            let formattedCell;
+
+            if (cell === null) {
+                formattedCell = '';
+            } else {
+                formattedCell = String(cell); // Convert to string
+            }
+
+            // Check if the cell needs to be quoted
+            if (
+                formattedCell.includes(',') ||
+                formattedCell.includes('"') ||
+                formattedCell.includes('\n') ||
+                formattedCell.includes('\r')
+            ) {
+                // Escape double quotes by replacing " with ""
+                formattedCell = formattedCell.replace(/"/g, '""');
+                formattedCell = `"${formattedCell}"`; // Enclose in double quotes
+            }
+
+            csvRow.push(formattedCell);
+        }
+
+        csvRows.push(csvRow.join(',')); // Join cells with commas
+    }
+
+    return csvRows.join(lineTerminator); // Join rows with the specified line terminator
+}
+
+function tokenMaker(contents, existingTokens, intSize) {
+    let specialString = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    let token = "";
+    for (let i = 0; i < intSize; i++) {
+        token += specialString[Math.floor(Math.random() * specialString.length)];
+    }
+
+    while ((existingTokens.includes(token)) || (contents.includes(token))) {
+        token = "";
+        for (let i = 0; i < intSize; i++) {
+            token += specialString[Math.floor(Math.random() * specialString.length)];
+        }
+    }
+
+    return token;
+}
+
+function isColumnNumeric(data, columnIndex) {
+    // Check if the data is valid and the column index is within bounds
+    if (!Array.isArray(data) || data.length === 0 || columnIndex < 0) {
+        return false;
+    }
+
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+
+        // Check if the row has enough columns
+        if (row.length <= columnIndex) {
+            return false; // Column index is out of bounds for this row
+        }
+
+        const cellValue = row[columnIndex];
+
+        // Check if the cell value is numeric
+        if (cellValue !== '' && isNaN(cellValue)) {
+            return false; // Found a non-numeric value
+        }
+    }
+
+    return true; // All values in the column are numeric
+}
+
+function determineLineTerminator(text) {
+    const lineTerminators = {
+        '\r\n': 0,
+        '\n': 0,
+        '\r': 0
+    };
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+
+        // Toggle inQuotes state when encountering a double quote
+        if (char === '"') {
+            inQuotes = !inQuotes;
+        }
+
+        // Check for line terminators only when not in quotes
+        if (!inQuotes) {
+            if (text.substr(i, 2) === '\r\n') {
+                lineTerminators['\r\n']++;
+                i++; // Skip the next character since it's part of CRLF
+            } else if (char === '\n') {
+                lineTerminators['\n']++;
+            } else if (char === '\r') {
+                lineTerminators['\r']++;
+            }
+        }
+    }
+
+    // Determine which line terminator has the highest count
+    let maxCount = 0;
+    let detectedTerminator = '\n'; // Default to LF
+
+    for (const [terminator, count] of Object.entries(lineTerminators)) {
+        if (count > maxCount) {
+            maxCount = count;
+            detectedTerminator = terminator;
+        }
+    }
+
+    return detectedTerminator;
+}
+
+function replaceUnquotedLineTerminators(text, lineTerminatorToken) {
+    let inQuotes = false;
+    let modifiedText = '';
+    const lineTerminatorRegex = /\r\n|\n|\r/g; // Regex to match different line terminators
+
+    let lastIndex = 0;
+    let match;
+
+    // Iterate through the text to find line terminators
+    while ((match = lineTerminatorRegex.exec(text)) !== null) {
+        const lineTerminator = match[0];
+        const startIndex = match.index;
+
+        // Append the text before the line terminator
+        modifiedText += text.slice(lastIndex, startIndex);
+
+        // Check if the line terminator is outside of quotes
+        if (!inQuotes) {
+            // Replace the line terminator with the token
+            modifiedText += lineTerminatorToken;
+        } else {
+            // Keep the line terminator as is
+            modifiedText += lineTerminator;
+        }
+
+        // Update the last index
+        lastIndex = startIndex + lineTerminator.length;
+
+        // Toggle inQuotes state when encountering double quotes
+        for (let i = startIndex; i < lastIndex; i++) {
+            if (text[i] === '"') {
+                inQuotes = !inQuotes;
+            }
+        }
+    }
+
+    // Append any remaining text after the last line terminator
+    modifiedText += text.slice(lastIndex);
+
+    return modifiedText;
+}
+
+
+function replaceUnquotedCommas(line, delimiterToken) {
+    let inQuotes = false;
+    let modifiedLine = '';
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+            inQuotes = !inQuotes; // Toggle inQuotes state
+        }
+
+        if (char === ',' && !inQuotes) {
+            modifiedLine += delimiterToken; // Replace comma with delimiter token
+        } else {
+            modifiedLine += char; // Add character to modified line
+        }
+    }
+
+    return modifiedLine;
+}
+
+function moreThanOneColumn(lines, delimiterToken) {
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(delimiterToken)) { // Check if the line contains the delimiter
+            const columnCount = lines[i].split(delimiterToken).length;
+            return columnCount > 1; // Return true if there are more than one column
+        }
+    }
+    return false; // Return false if no valid line with columns is found
+}
+
+function parseCSV(text) {
+    const existingTokens = [];
+
+    // Step 1: Determine the correct line terminator
+    const lineTerminator = determineLineTerminator(text);
+
+    // Step 2: Generate a token for the delimiter
+    const delimiterToken = tokenMaker(text, existingTokens, 16);
+
+    // Step 3: Generate a token for line terminators
+    const lineTerminatorToken = tokenMaker(text, existingTokens, 16);
+
+    // Step 4: Replace line terminators not in quotes with the lineTerminator token
+    //const modifiedText = replaceUnquotedLineTerminators(text, lineTerminatorToken);
+    text = replaceUnquotedLineTerminators(text, lineTerminatorToken);
+
+    // Step 5: Split the modified text by the line terminator token to get the lines
+    // const lines = modifiedText.split(lineTerminatorToken);
+    const lines = text.split(lineTerminatorToken);
+
+    // Step 6: Replace commas not in quotes with the delimiter token
+    for (let i = 0; i < lines.length; i++) {
+        lines[i] = replaceUnquotedCommas(lines[i], delimiterToken); // Modify the line directly
+    }
+
+    // Step 7: Check if there are more than one column
+    const hasMoreThanOneColumn = moreThanOneColumn(lines, delimiterToken);
+
+    // Step 8: Filter out blank lines if there are multiple columns
+    for (let i = lines.length - 1; i >= 0; i--) {
+        // If there are multiple columns, skip blank lines without commas
+        if (hasMoreThanOneColumn && lines[i].trim() === "") {
+            lines.splice(i, 1); // Remove the blank line
+        }
+    }
+
+    // Step 9: Split the modified lines by the delimiter token
+    const rows = []; // Renamed from parsedRows to rows
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const row = line.split(delimiterToken); // Use split on the modified line
+        rows.push(row);
+    }
+
+    // Step 9.1: Remove non-printable characters outside of quotes
+    for (let i = 0; i < rows.length; i++) {
+        for (let j = 0; j < rows[i].length; j++) {
+            let cell = rows[i][j];
+
+            // Find the first and last non-escaped solitary double quotes
+            const firstQuoteIndex = cell.search(/(?<!")"(?!")/);
+            const lastQuoteIndex = cell.lastIndexOf('"');
+
+            // Only process if there is at least one solitary quote
+            if (firstQuoteIndex !== -1 && lastQuoteIndex > firstQuoteIndex) {
+                // Remove non-printable characters before the first quote
+                const beforeQuotes = keepPrintableExtendedAscii(cell.slice(0, firstQuoteIndex));
+                const insideQuotes = cell.slice(firstQuoteIndex, lastQuoteIndex + 1); // Include the last quote
+                const afterQuotes = keepPrintableExtendedAscii(cell.slice(lastQuoteIndex + 1));
+
+                // Reconstruct the cell
+                cell = beforeQuotes + insideQuotes + afterQuotes;
+            }
+
+            // Remove surrounding quotes if they are solitary
+            if (cell.startsWith('"') && cell.endsWith('"')) {
+                cell = cell.slice(1, -1); // Remove surrounding quotes directly
+            }
+
+            rows[i][j] = cell; // Update the cell in the row
+        }
+    }
+
+    // Step 10: Replace escaped double quotes with a single double quote in each cell of rows
+    for (let i = 0; i < rows.length; i++) {
+        for (let j = 0; j < rows[i].length; j++) {
+            rows[i][j] = rows[i][j].replace(/""/g, '"'); // Replace "" with "
+        }
+    }
+
+    // Step 11: Remove outer quotes from quoted cells directly in rows
+    for (let i = 0; i < rows.length; i++) {
+        for (let j = 0; j < rows[i].length; j++) {
+            const cell = rows[i][j];
+            if (cell.startsWith('"') && cell.endsWith('"')) {
+                rows[i][j] = cell.slice(1, -1); // Remove surrounding quotes directly
+            }
+        }
+    }
+
+    // Return the rows as the result
+    return rows;
+}
+
+</script>
+<script>
+////////////////////////////////////////////////////////////////////////////////////
+//                              Matrix Functions:
+////////////////////////////////////////////////////////////////////////////////////
+function addOnesForIntercept(X) {
+  const XWithIntercept = []; // Initialize the new array
+  for (let i = 0; i < X.length; i++) {
+    const currentRow = X[i];
+    const currentRowWithIntercept = [1]; // Start with 1 for the intercept
+    // Add the original row data to the new row
+    for (let j = 0; j < currentRow.length; j++) {
+      currentRowWithIntercept.push(currentRow[j]);
+    }
+    // Push the new row with intercept to the result array
+    XWithIntercept.push(currentRowWithIntercept);
+  }
+  return XWithIntercept;
+}
+
+function transpose(matrix) {
+  const rows = matrix.length;
+  const cols = matrix[0].length;
+  const transposed = [];
+  for (let j = 0; j < cols; j++) {
+    transposed[j] = []; // Initialize the new row
+    for (let i = 0; i < rows; i++) {
+      transposed[j][i] = matrix[i][j]; // Assign transposed value
+    }
+  }
+  return transposed;
+}
+
+function multiply(matrixA, matrixB) {
+  const rowsA = matrixA.length;
+  const colsA = matrixA[0].length;
+  const colsB = matrixB[0].length;
+  const result = [];
+  for (let i = 0; i < rowsA; i++) {
+    result[i] = []; // Initialize the new row
+    for (let j = 0; j < colsB; j++) {
+      result[i][j] = 0; // Initialize the cell
+      for (let k = 0; k < colsA; k++) {
+        result[i][j] += matrixA[i][k] * matrixB[k][j]; // Multiply and accumulate
+      }
+    }
+  }
+  return result;
+}
+
+function inverse(matrix) {
+  const size = matrix.length;
+  const augmentedMatrix = [];
+  // Create the augmented matrix
+  for (let i = 0; i < size; i++) {
+    augmentedMatrix[i] = [];
+    for (let j = 0; j < size; j++) {
+      augmentedMatrix[i][j] = matrix[i][j]; // Copy original matrix
+    }
+    for (let j = 0; j < size; j++) {
+      augmentedMatrix[i][size + j] = (i === j) ? 1 : 0; // Add identity matrix
+    }
+  }
+  // Perform Gaussian elimination
+  for (let i = 0; i < size; i++) {
+    let maxElementIndex = i;
+    for (let j = i + 1; j < size; j++) {
+      if (Math.abs(augmentedMatrix[j][i]) > Math.abs(augmentedMatrix[maxElementIndex][i])) {
+        maxElementIndex = j;
+      }
+    }
+    if (augmentedMatrix[maxElementIndex][i] === 0) {
+      throw new Error("Matrix is singular and cannot be inverted");
+    }
+    // Swap rows
+    const temp = augmentedMatrix[i];
+    augmentedMatrix[i] = augmentedMatrix[maxElementIndex];
+    augmentedMatrix[maxElementIndex] = temp;
+    // Normalize the pivot row
+    const pivot = augmentedMatrix[i][i];
+    for (let j = 0; j < size * 2; j++) {
+      augmentedMatrix[i][j] /= pivot;
+    }
+    // Eliminate other rows
+    for (let j = 0; j < size; j++) {
+      if (j !== i) {
+        const factor = augmentedMatrix[j][i];
+        for (let k = 0; k < size * 2; k++) {
+          augmentedMatrix[j][k] -= factor * augmentedMatrix[i][k];
+        }
+      }
+    }
+  }
+  // Extract the inverse matrix
+  const inverseMatrix = [];
+  for (let i = 0; i < size; i++) {
+    inverseMatrix[i] = [];
+    for (let j = 0; j < size; j++) {
+      inverseMatrix[i][j] = augmentedMatrix[i][size + j]; // Get the right half of the augmented matrix
+    }
+  }
+  return inverseMatrix;
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////
+
+function extractXYFromParsedCSV(parsedData) {
+  let X = [];
+  const y = [];
+  const numRows = parsedData.length;
+  const numColumns = parsedData[0].length;
+  for (let i = 1; i < numRows; i++) { // Start from 1 to skip header
+    const currentRow = parsedData[i];
+    const currentRowData = []; // Initialize currentRowData for each row
+    for (let j = 0; j < numColumns; j++) {
+      if (j < numColumns - 1) {
+        // Collect independent variables
+        currentRowData.push(currentRow[j]);
+      } else {
+        // Collect dependent variable as a single-element array
+        y.push([currentRow[j]]); // Wrap in an array to make it a column vector
+      }
+    }
+    // Push the current row of independent variables to X
+    X.push(currentRowData);
+  }
+  X = addOnesForIntercept(X);
+  return { X, y };
+}
+
+function calculateMean(array) {
+  let sum = 0;
+  for (let i = 0; i < array.length; i++) {
+    sum += array[i][0];
+  }
+  return sum / array.length;
+}
+
+function calculateRSquared(SSR,SST) {
+  const R2 = 1 - (SSR / SST);
+  return R2;
+}
+
+function calculateAdjustedRSquared(n,p,R2) {
+  const adjustedR2 = 1 - ((1 - R2) * (n - 1)) / (n - p - 1);
+  return adjustedR2;
+}
+
+function calculateFStatistic(X, y, coefficients) {
+  const n = y.length; // Number of observations
+  const p = coefficients.length - 1; // Number of predictors (excluding intercept)
+  // Calculate predicted values
+  const yPredicted = calculatePredictedValues(X, coefficients);
+  // Calculate SST and SSR
+  const SST = calculateSST(y);
+  const SSR = calculateSSR(X,y,coefficients);
+  // Calculate the regression sum of squares (RSS)
+  const RSS = SST - SSR;
+  // Calculate the mean square for regression (MSR) and mean square for error (MSE)
+  const MSR = RSS / p; // Regression degrees of freedom
+  const MSE = SSR / (n - p - 1); // Residual degrees of freedom
+  // Calculate F-statistic
+  const F = MSR / MSE;
+  return F;
+}
+
+function calculateSST(y) {
+  const meanY = calculateMean(y);
+  let SST = 0;
+  for (let i = 0; i < y.length; i++) {
+    SST += Math.pow(y[i][0] - meanY, 2);
+  }
+  return SST;
+}
+
+function calculateSSR(residuals) {
+  let SSR = 0;
+  for (let i = 0; i < residuals.length; i++) {
+    SSR += Math.pow(residuals[i], 2);
+  }
+  return SSR;
+}
+
+function calculatePredictedValues(X, coefficients) {
+  let numberOfRows = X.length;
+  const yPredicted = [];
+  for (let i = 0; i < numberOfRows; i++) { //go through the rows of data
+    let result = 0;
+    for (let j = 0; j < coefficients.length; j++) {//add up all the results
+      result += coefficients[j] * X[i][j];
+    }
+    let tempRow = []; //y is a matrix with one column, not a simple 1d array
+    tempRow.push(result);
+    yPredicted.push(tempRow);
+  }
+  return yPredicted;
+}
+
+function calculateResiduals(n, y, yPredicted) {
+  //let yPredicted = calculatePredictedValues(X, coefficients);
+  // Calculate residuals
+  //let n = X.length;
+  const residuals = new Array(n);
+  for (let i = 0; i < n; i++) {
+    residuals[i] = y[i] - yPredicted[i]; // y[i] is already a scalar
+  }
+  return residuals;
+}
+
+function calculateVariance(n,p,SSR) {
+  // const n = y.length; // Number of observations
+  const variance = SSR / (n - p); // Residual degrees of freedom
+  return variance;
+}
+
+
+
+function getColumnDataFromMatrix(matrix, column = 0) {
+  const columnData = []; // Initialize an empty array to hold the coefficients
+  // Loop through each sub-array in the data
+  for (let i = 0; i < matrix.length; i++) {
+    columnData.push(matrix[i][column]); // Push the first element of each sub-array into the coefficients array
+  }
+  return columnData; // Return the array of coefficients
+}
+
+function getDiagonals(matrix){
+  const diag = [];
+  for (let i = 0; i < matrix.length; i++) {
+    diag.push(matrix[i][i]);
+  }
+  return diag;
+}
+
+function multipleLinearRegression(X, y) {
+  // Transpose the matrix X
+  const XT = transpose(X);
+  // Multiply XT by X
+  const XT_X = multiply(XT, X);
+  // Invert the resulting matrix (XT * X)
+  const XT_X_inv = inverse(XT_X);
+  // Multiply XT by y to get XT_y
+  const XT_y = multiply(XT, y);
+  // Calculate the coefficients (beta) by multiplying the inverse of (XT * X) with (XT * y)
+  const beta = multiply(XT_X_inv, XT_y);
+  let coefficients = getColumnDataFromMatrix(beta);
+  return coefficients; // Return the coefficients
+}
+
+function calculateStandardErrors(X, y) {
+  let coefficients = multipleLinearRegression(X, y);
+  let variance = calculateVariance(X, y, coefficients);
+  // Transpose the matrix X
+  const XT = transpose(X);
+  // Multiply XT by X
+  const XT_X = multiply(XT, X);
+  // Invert the resulting matrix (XT * X)
+  const XT_X_inv = inverse(XT_X);
+
+  const diag=getDiagonals(XT_X_inv);
+
+  let stdErrorOfCoefficients = new Array(diag.length);
+  for (let i = 0, len = diag.length; i < len; i++) {
+    let x = diag[i] * variance;
+    stdErrorOfCoefficients[i] = Math.sqrt(x);
+  }
+
+
+  return stdErrorOfCoefficients;; // Return the coefficients
+}
+
+function calculateStatistics(X, y) {
+  let n=X.length;
+  let p=X[0].length;
+  let k=p-1;
+  let dfm=k;
+  let dfr=n-k-1;
+///////////////Getting coefficients/////////////////////////
+  // Transpose the matrix X
+  let XT = transpose(X);
+  // Multiply XT by X
+  let XT_X = multiply(XT, X);
+  // Invert the resulting matrix (XT * X)
+  let XT_X_inv = inverse(XT_X);
+  // Multiply XT by y to get XT_y
+  let XT_y = multiply(XT, y);
+  // Calculate the coefficients (beta) by multiplying the inverse of (XT * X) with (XT * y)
+  let beta = multiply(XT_X_inv, XT_y);
+  let coefficients = getColumnDataFromMatrix(beta);
+  ////// yPredicted used for later functions////////////////// 
+  let yPredicted = calculatePredictedValues(X, coefficients);
+  let residuals=calculateResiduals(n,y,yPredicted);
+  let SSR=calculateSSR(residuals);
+  let SST=calculateSST(y);
+  let variance=calculateVariance(n,p,SSR);
+  let R2=calculateRSquared(SSR,SST);
+  let adjustedR2=calculateAdjustedRSquared(n,p,R2);
+  ////////////Get standard errors of the coefficients////////////////
+  let diag=getDiagonals(XT_X_inv);
+  let standardErrors = new Array(diag.length);
+  for (let i = 0, len = diag.length; i < len; i++) {
+    let x = diag[i] * variance;
+    standardErrors[i] = Math.sqrt(x);
+  }
+  let tValues=calculateTValues(coefficients,standardErrors);
+  /////RSS is SSR in other programs
+  let RSS = SST - SSR;
+  // Calculate the mean square for regression (MSR) and mean square for error (MSE)
+  let MSR = RSS / (p-1); // Regression degrees of freedom
+  let MSE = SSR / (n - p); // Residual degrees of freedom
+  // Calculate F-statistic
+  let FStatistic = MSR / MSE;
+  let DurbinWatson=calculateDurbinWatson(SSR,residuals);
+  let approximatePValues=calculatePValues(n,tValues);
+  let approximateCIs=calculateConfidenceIntervals(n, coefficients, standardErrors);
+  return {residuals,coefficients,standardErrors,SSR,SST,variance,R2,adjustedR2,tValues,FStatistic,RSS,DurbinWatson,approximatePValues,approximateCIs,n,dfm,dfr}; // Return the coefficients
+}
+
+// Function to calculate the critical t-value for a given alpha and degrees of freedom
+function criticalT(alpha, df) {
+  // This is a rough approximation; for accurate results, use a library or a more precise method
+  if (df < 30) {
+    return 2.045; // Approximate critical t-value for df=30 at alpha=0.05
+  } else {
+    return 1.96; // Approximate critical t-value for large df (normal distribution)
+  }
+}
+
+// Function to calculate t-values
+function calculateTValues(coefficients, standardErrors) {
+  const tValues = [];
+  for (let i = 0; i < coefficients.length; i++) {
+    const tValue = coefficients[i] / standardErrors[i];
+    tValues.push(tValue);
+  }
+  return tValues; // Return the array of t-values
+}
+
+// Function to calculate confidence intervals
+function calculateConfidenceIntervals(n, coefficients, standardErrors) {
+  // const n = X.length; // Number of observations
+  const confidenceIntervals = [];
+  const df = n - coefficients.length - 1; // Degrees of freedom
+  // console.log(df);
+  const alpha = 0.05; // 95% confidence interval
+  const tCritical = criticalT(alpha / 2, df); // Critical t-value
+  for (let i = 0; i < coefficients.length; i++) {
+    const marginOfError = tCritical * standardErrors[i];
+    const ciLower = coefficients[i] - marginOfError;
+    const ciUpper = coefficients[i] + marginOfError;
+    confidenceIntervals.push([ciLower, ciUpper]);
+  }
+  return confidenceIntervals; // Return the array of confidence intervals
+}
+
+function calculateDurbinWatson(SSR,residuals) {
+  const n = residuals.length;
+  let sumOfSquaresDiff = 0;
+  for (let i = 1; i < n; i++) {
+    const diff = residuals[i] - residuals[i - 1];
+    sumOfSquaresDiff += Math.pow(diff, 2);
+  }
+  const dwStatistic = sumOfSquaresDiff / SSR;
+  return dwStatistic;
+}
+
+function getColumnData(matrix) {
+  const columnData = []; // Initialize an empty array to hold the coefficients
+  // Loop through each sub-array in the data
+  for (let i = 0; i < matrix.length; i++) {
+    columnData.push(matrix[i][0]); // Push the first element of each sub-array into the coefficients array
+  }
+  return columnData; // Return the array of coefficients
+}
+
+function tCDFRecursive(tStatistic, df) {
+  // Cumulative distribution functionfor the t-distribution (recursive version)
+  if (tStatistic < 0) {
+    return 1 - tCDFRecursive(-tStatistic, df); // Use symmetry of the t-distribution
+  }
+
+  const cdf = normalCDF(tStatistic * Math.sqrt(df / (df + tStatistic * tStatistic)));
+  return cdf;
+}
+
+function erfPoly4(x) {
+  /* Abramowitz and Stegun
+   * Computes the value of the functionbased on the given formula (maximum error: 5×10−4)
+   *   f(x) = 1 - 1 / (1 + a1 * x + a2 * x^2 + a3 * x^3 + a4 * x^4)^4
+   *   Where: a1 = 0.278393, a2 = 0.230389, a3 = 0.000972, a4 = 0.078108
+   */
+  const a1 = 0.278393; const a2 = 0.230389; const a3 = 0.000972; const a4 = 0.078108;
+  // Calculate the polynomial part
+  const polynomial = 1 + a1 * x + a2 * Math.pow(x, 2) + a3 * Math.pow(x, 3) + a4 * Math.pow(x, 4);
+  // Calculate the final result
+  const result = 1 - (1 / Math.pow(polynomial, 4));
+  return result;
+}
+
+function normalCDF(x) {
+  // Cumulative distribution function for the standard normal distribution
+  //return (1.0 + Math.erf(x / Math.sqrt(2.0))) / 2.0;
+  return (1.0 + erfPoly4(x / Math.sqrt(2.0))) / 2.0;
+}
+
+function tCDF(tStatistic, df) {
+  const originalTStatistic = tStatistic; // Store the original value
+  tStatistic = Math.abs(tStatistic);
+  const cdf = normalCDF(tStatistic * Math.sqrt(df / (df + tStatistic * tStatistic)));
+  if (originalTStatistic < 0) {
+    return 1 - cdf; // If original tStatistic was negative
+  } else {
+    return cdf; // If original tStatistic was non-negative
+  }
+}
+
+function calculatePValue(n,p,tStatistic) {
+  // Calculate degrees of freedom = number of rows - number of independent variables
+  const df = n-p;
+  // Calculate the p-value using the tCDF function
+  const pValue = 2 * (1 - tCDF(Math.abs(tStatistic), df));
+  return pValue;
+}
+
+function calculatePValues(n,tStatistics) {
+  const pValues = [];
+  let p=tStatistics.length;
+  for (let i = 0; i < tStatistics.length; i++) {
+    const pValue = calculatePValue(n,p,tStatistics[i]);
+    pValues.push(pValue);
+  }
+  return pValues;
+}
+</script>
+<script>
+// Copyright 2025 gary
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     https://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+document.getElementById('loadButton').addEventListener('click', function () {
+    const fileInput = document.getElementById('fileInput');
+    fileInput.click(); // Trigger the file input click to open the file dialog
+
+    // Add an event listener to handle the file selection
+    fileInput.addEventListener('change', function () {
+        if (fileInput.files.length === 0) {
+            alert('Please select a CSV file to load.');
+            return;
+        }
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            const csvInput = document.getElementById('csvInput');
+            csvInput.value = event.target.result; // Set the content of the csvInput to the file content
+        };
+        reader.readAsText(file);
+    }, { once: true }); // Use { once: true } to ensure the event listener is removed after it runs
+});
+
+document.getElementById('saveButton').addEventListener('click', function () {
+    const resultOutput = document.getElementById('resultOutput').value;
+    const theDependentVariable = document.getElementById("hiddenName").value; // Replace with your actual dependent variable
+    const today = new Date();
+    const formattedDate = today.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    const filename = `regression-${theDependentVariable}-${formattedDate}.txt`;
+
+    const blob = new Blob([resultOutput], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+});
+
+document.getElementById('copyButton').addEventListener('click', function () {
+    const resultOutput = document.getElementById('resultOutput');
+
+    // Use the Clipboard API to write to the clipboard
+    navigator.clipboard.writeText(resultOutput.value)
+        .then(() => {
+            // Create a message with the contents
+            const message = `Copied to clipboard:\n${resultOutput.value}`;
+            alert(message);
+        })
+        .catch(err => {
+            console.error('Failed to copy: ', err);
+        });
+});
+
+document.getElementById('clearButton').addEventListener('click', function () {
+    // Clear the values of the specified elements
+    document.getElementById('fileInput').value = '';
+    document.getElementById('csvInput').value = '';
+    document.getElementById('resultOutput').value = '';
+});
+
+window.onbeforeunload = askCloseWindow;
+function askCloseWindow() {
+    return "Are you sure?";
+}
+
+let computeButton = document.getElementById("computeButton");
+computeButton.addEventListener("click", compute);
+
+function compute() {
+    let resultOutput = document.getElementById("resultOutput");
+    let csvContents = document.getElementById("csvInput").value;
+    let arrays = parseCSV(csvContents);
+    arrays = convertColumnsToNumbers(arrays);
+    let headers = arrays[0];
+    document.getElementById("hiddenName").value = headers[headers.length - 1];
+    resultOutput.value = headers.toString();
+    let extractedData = extractXYFromParsedCSV(arrays);
+    let X = extractedData["X"];
+    let y = extractedData["y"];
+    let resultObject = calculateStatistics(X, y);
+    let coefficients = resultObject["coefficients"];
+    coefficients = convertArrayElementsToPrecision(coefficients, 4);
+    let standardErrors = resultObject["standardErrors"];
+    standardErrors = convertArrayElementsToPrecision(standardErrors, 4);
+    let tValues = resultObject["tValues"];
+    tValues = convertArrayElementsToPrecision(tValues, 4);
+    let approximatePValues = resultObject["approximatePValues"];
+    approximatePValues = convertArrayElementsToPrecision(approximatePValues, 2);
+    let approximateCIs = resultObject["approximateCIs"];
+    console.log(approximateCIs);
+    for (let i = 0; i < approximateCIs.length; i++) {
+        approximateCIs[i][0] = convertToPrecision(approximateCIs[i][0], 2);
+        approximateCIs[i][1] = convertToPrecision(approximateCIs[i][1], 2);
+    }
+    let len = coefficients.length;
+    let str2 = "";
+    let coefNames = [];
+    coefNames.push("intercept");
+    for (let i = 0; i < headers.length - 1; i++) {//the last header is the dependent variable
+        coefNames.push(headers[i]);
+    }
+    const columnHeaders = [
+        { name: "COEFFICIENTS", width: 15 },
+        { name: "VALUE", width: 10 },
+        { name: "STDERR", width: 10 },
+        { name: "TSTAT", width: 10 },
+        { name: "PVAL", width: 12 },
+        { name: "CI(LOW)", width: 10 },
+        { name: "CI(HIGH)", width: 10 }
+    ];
+    // Create the header string by padding each header name
+    let headerString = columnHeaders.map(header => header.name.padEnd(header.width)).join('') + "\n";
+    str2 += headerString;
+    str2 += "--------------------------------------------------------------------------\n";
+    // Define the widths for the columns (same as in columnHeaders)
+    const coefWidth = columnHeaders[0].width; // Width for coefficients
+    const valueWidth = columnHeaders[1].width; // Width for values
+    const stderrWidth = columnHeaders[2].width; // Width for standard errors
+    const tstatWidth = columnHeaders[3].width; // Width for t-statistics
+    const pvalWidth = columnHeaders[4].width; // Width for p-values
+    const ciWidth = columnHeaders[5].width; // Width for confidence intervals
+    for (let i = 0; i < len; i++) {
+        str2 += coefNames[i].padEnd(coefWidth) +
+            coefficients[i].toFixed(4).padEnd(valueWidth) +
+            standardErrors[i].toFixed(4).padEnd(stderrWidth) +
+            tValues[i].toFixed(4).padEnd(tstatWidth) +
+            approximatePValues[i].toExponential(2).padEnd(pvalWidth) +
+            approximateCIs[i][0].toFixed(4).padEnd(ciWidth) +
+            approximateCIs[i][1].toFixed(4) + "\n"; // No padding for the last column
+    }
+    let SSR = resultObject["RSS"]; // Sum of Squares Regression
+    let SST = resultObject["SST"]; // Total Sum of Squares
+    let R2 = resultObject["R2"]; // R-squared
+    let adjustedR2 = resultObject["adjustedR2"]; // Adjusted R-squared
+    let FStatistic = resultObject["FStatistic"]; // F-statistic
+    let RSS = resultObject["RSS"]; // Residual Sum of Squares
+    let DurbinWatson = resultObject["DurbinWatson"]; // Durbin-Watson statistic
+    let n = resultObject["n"]; // Number of observations
+    let dfm = resultObject["dfm"]; // Degrees of freedom for the model
+    let dfr = resultObject["dfr"]; // Degrees of freedom for residuals
+    let str1 = "OLS Regression Results\n";
+    str1 += "==========================================================================\n";
+
+    const totalWidth = 40; // Adjust this width as needed
+
+    // Function to format each line with left and right alignment
+    function formatLine(leftLabel, rightValue) {
+        const leftPart = leftLabel.padEnd(totalWidth - 20); // Leave space for the right part
+        const rightPart = rightValue.toString().padStart(25); // Right-align the value
+        return leftPart + rightPart + "\n";
+    }
+
+    str1 += formatLine("Dep. Variable:", headers[headers.length - 1]);
+    str1 += formatLine("Model:", "OLS");
+    str1 += formatLine("Method:", "Least Squares");
+    str1 += formatLine("Date/Time:", new Date().toLocaleString());
+    str1 += formatLine("No. Observations:", n);
+    str1 += formatLine("Df Residuals:", dfr);
+    str1 += formatLine("Df Model:", dfm);
+    str1 += formatLine("Covariance Type:", "nonrobust");
+    str1 += formatLine("R-squared:", R2.toFixed(4)); // Format to 4 decimal places
+    str1 += formatLine("Adj. R-squared:", adjustedR2.toFixed(4)); // Format to 4 decimal places
+    str1 += formatLine("F-statistic:", FStatistic.toFixed(4)); // Format to 4 decimal places
+    str1 += formatLine("Durbin-Watson:", DurbinWatson.toFixed(4)); // Format to 4 decimal places
+    str1 += "==========================================================================\n";
+    
+    str3 = "";
+    str3 += "==========================================================================\n";
+    str3 += "Notes:"
+    str3 += "[1] Special notes go here.\n";
+    str3 += "Sum of Squares for Regression (SSR): " + RSS.toString() + "\n";
+    str3 += "Total Sum of Squares (SST): " + SST.toString() + "\n";
+    str3 += "==========================================================================\n";
+    str3 += "Formula:"
+    str3+=makeFormulaString(coefficients,headers);
+    resultOutput.value = str1 + str2 + str3;
+}
+
+function convertArrayElementsToPrecision(array, precision) {
+    array = JSON.parse(JSON.stringify(array));
+    for (let i = 0; i < array.length; i++) {
+        array[i] = convertToPrecision(array[i], precision);
+    }
+    return array;
+}
+function convertToPrecision(number, precision) {
+    return Number(number.toPrecision(precision));
+}
+
+function makeFormulaString(coefficients, headers) {
+    // Start with the dependent variable and the equals sign
+    let formula = headers[headers.length - 1] + " = " + coefficients[0];
+
+    // Loop through the coefficients and headers to build the formula
+    for (let i = 1; i < coefficients.length; i++) {
+        formula += " + (" + coefficients[i] + ")*" + headers[i - 1];
+    }
+
+    return formula;
+}
+
+</script>
+    <footer>&copy; Gary Davenport 2025</footer>
+</body>
+</html>
+
