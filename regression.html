@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSV Loader and Multivariable Regression</title>
+    <title>CSV Multivariable Regression</title>
 <style>
 /* RESET STARTS */
 html {
@@ -104,30 +104,421 @@ button:hover {
 }
 
 footer {
-    position: fixed;
-    bottom: 0;
-    left: 50%;
+    text-align: center;
     background-color: transparent;
     color: grey;
     text-align: center;
-    transform: translate(-50%, 0%);
 }
 
+input{
+    width: 4em;
+}
 </style>
 </head>
 <body>
-    <div class="container">
-        <input id="hiddenName" value="y">;
-        <h1>CSV Loader and Regression Analysis</h1>
+    <main class="container">
+        <input id="hiddenName" value="y">
+        <h1>CSV Multivariable Regression</h1>
         <textarea id="csvInput" placeholder="Load your CSV here...Independent variables are first.  The last column is the dependent variable." rows="10" spellcheck="false"></textarea>
         <input type="file" id="fileInput" accept=".csv">
-        <button id="loadButton">Load CSV</button>
+        <button id="loadCSVButton">Load CSV</button>
+        <button id="saveCSVButton">Save CSV</button>
+        <button id="standardizeData">Standardize Data</button>
+        <button id="undo">Undo</button>
+        <button id="removeColumn">Remove Column</button>
         <button id="computeButton">Compute</button>
+        <button id="help">Help</button>
         <button id="clearButton">Clear All Fields</button>
-        
         <textarea id="resultOutput" placeholder="Results will be shown here..." rows="32" spellcheck="false"></textarea>
         <button id="saveButton">Save Results</button><button id="copyButton">Copy to Clipboard</button>
-    </div>
+<script>
+// Copyright 2025 gary
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// 
+//     https://www.apache.org/licenses/LICENSE-2.0
+// 
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+let lastInput = document.getElementById("csvInput").value;
+
+function clearResults(){
+    document.getElementById("resultOutput").value="";
+}
+
+document.getElementById('loadCSVButton').addEventListener('click', function () {
+    const fileInput = document.getElementById('fileInput');
+    fileInput.click(); // Trigger the file input click to open the file dialog
+
+    // Add an event listener to handle the file selection
+    fileInput.addEventListener('change', function () {
+        if (fileInput.files.length === 0) {
+            alert('Please select a CSV file to load.');
+            return;
+        }
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            const csvInput = document.getElementById('csvInput');
+            csvInput.value = event.target.result; // Set the content of the csvInput to the file content
+            clearResults();
+        };
+        reader.readAsText(file);
+    }, { once: true }); // Use { once: true } to ensure the event listener is removed after it runs
+});
+
+document.getElementById("removeColumn").addEventListener("click",removeColumn);
+function removeColumn(){
+    let columnName=prompt("Enter the header name to remove.");
+    if (columnName!==null){
+        let textContents=document.getElementById("csvInput").value;
+        let arrays=parseCSV(textContents);
+        let headers=arrays[0];
+        let index=headers.indexOf(columnName);
+        if (index==-1){
+            alert("Did not find column:"+columnName+".");
+        }
+        else{
+            if (confirm("Remove "+headers[index]+" at column "+index.toString()+" ?")){
+                arrays=removeColumnFrom2DArray(arrays,index);
+                document.getElementById("csvInput").value=arrayToCSV(arrays);
+            }
+            else{
+                console.log("averted");
+            }
+        }
+    }
+}
+
+document.getElementById('saveButton').addEventListener('click', function () {
+    const resultOutput = document.getElementById('resultOutput').value;
+    const theDependentVariable = document.getElementById("hiddenName").value; // Replace with your actual dependent variable
+    const today = new Date();
+    const formattedDate = today.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    const filename = `regression-${theDependentVariable}-${formattedDate}.txt`;
+
+    const blob = new Blob([resultOutput], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+});
+function writeStringToClipboard(text) {
+    // Check if the Clipboard API is available
+    if (navigator.clipboard) {
+        // Use the Clipboard API to write the text
+        navigator.clipboard.writeText(text)
+            .then(() => {
+                alert('Text copied to clipboard:\n\n' + text);
+            })
+            .catch(() => {
+                alert('Failed to copy text.');
+            });
+    } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert('Text copied to clipboard:\n\n' + text);
+        } catch (err) {
+            alert('Failed to copy text.');
+        }
+        document.body.removeChild(textArea);
+    }
+}
+
+
+document.getElementById('copyButton').addEventListener('click', function () {
+    const resultOutput = document.getElementById('resultOutput').value;
+    // Use the Clipboard API to write to the clipboard
+    // navigator.clipboard.writeText(resultOutput.value)
+    //     .then(() => {
+    //         // Create a message with the contents
+    //         const message = `Copied to clipboard:\n${resultOutput.value}`;
+    //         alert(message);
+    //     })
+    //     .catch(err => {
+    //         console.error('Failed to copy: ', err);
+    //     });
+    writeStringToClipboard(resultOutput);
+});
+
+document.getElementById('clearButton').addEventListener('click', function () {
+    // Clear the values of the specified elements
+    document.getElementById('fileInput').value = '';
+    document.getElementById('csvInput').value = '';
+    document.getElementById('resultOutput').value = '';
+});
+
+window.onbeforeunload = askCloseWindow;
+function askCloseWindow() {
+    return "Are you sure?";
+}
+
+let computeButton = document.getElementById("computeButton");
+computeButton.addEventListener("click", compute);
+
+function compute() {
+    //console.log("calling compute");
+    let resultOutput = document.getElementById("resultOutput");
+    let csvContents = document.getElementById("csvInput").value;
+    let arrays = parseCSV(csvContents);
+    arrays = convertColumnsToNumbers(arrays);
+    let headers = arrays[0];
+    document.getElementById("hiddenName").value = headers[headers.length - 1];
+    resultOutput.value = headers.toString();
+    let extractedData = extractXYFromParsedCSV(arrays);
+    let X = extractedData["X"];
+    let y = extractedData["y"];
+    let resultObject = calculateStatistics(X, y, headers);
+    let coefficients = resultObject["coefficients"];
+    coefficients = convertArrayElementsToPrecision(coefficients, 4);
+    let standardErrors = resultObject["standardErrors"];
+    standardErrors = convertArrayElementsToPrecision(standardErrors, 4);
+    let tValues = resultObject["tValues"];
+    tValues = convertArrayElementsToPrecision(tValues, 4);
+    let approximatePValues = resultObject["approximatePValues"];
+    approximatePValues = convertArrayElementsToPrecision(approximatePValues, 2);
+    let approximateCIs = resultObject["approximateCIs"];
+    for (let i = 0; i < approximateCIs.length; i++) {
+        approximateCIs[i][0] = convertToPrecision(approximateCIs[i][0], 2);
+        approximateCIs[i][1] = convertToPrecision(approximateCIs[i][1], 2);
+    }
+    let VIFs = calculateVIFs(X, headers);
+    VIFs = convertArrayElementsToPrecision(VIFs, 2);
+    let len = coefficients.length;
+    let str2 = "";
+    let coefNames = [];
+    coefNames.push("intercept");
+    for (let i = 0; i < headers.length - 1; i++) {//the last header is the dependent variable
+        coefNames.push(headers[i]);
+    }
+
+    let tableArray = [];
+    let row = [];
+    row.push("");
+    row.push("coeff");
+    row.push("stderr");
+    row.push("t-val");
+    row.push("p-val");
+    row.push("ci-low");
+    row.push("ci-high");
+    row.push("vif");
+    tableArray.push(hardCopy(row));
+    console.log(VIFs);
+    for (let i = 0; i < coefNames.length; i++) {
+        row = [];
+        row.push(coefNames[i]);
+        row.push(coefficients[i]);
+        row.push(standardErrors[i]);
+        row.push(tValues[i]);
+        row.push(approximatePValues[i]);
+        row.push(approximateCIs[i][0]);
+        row.push(approximateCIs[i][1]);
+        if (i === 0) {
+            row.push("");
+        }
+        else {
+            row.push(VIFs[i - 1]);
+        }
+        // row.push(VIFs[i]);
+        tableArray.push(hardCopy(row));
+    }
+
+    str2 += formatTable(tableArray) + "\n";
+    let SSR = resultObject["RSS"]; // Sum of Squares Regression
+    let SST = resultObject["SST"]; // Total Sum of Squares
+    let R2 = resultObject["R2"]; // R-squared
+    let adjustedR2 = resultObject["adjustedR2"]; // Adjusted R-squared
+    let FStatistic = resultObject["FStatistic"]; // F-statistic
+    let RSS = resultObject["RSS"]; // Residual Sum of Squares
+    let DurbinWatson = resultObject["DurbinWatson"]; // Durbin-Watson statistic
+    let n = resultObject["n"]; // Number of observations
+    let dfm = resultObject["dfm"]; // Degrees of freedom for the model
+    let dfr = resultObject["dfr"]; // Degrees of freedom for residuals
+    let str1 = "OLS Regression Results\n";
+    str1 += "==========================================================================\n";
+
+    const totalWidth = 40; // Adjust this width as needed
+
+    // Function to format each line with left and right alignment
+    function formatLine(leftLabel, rightValue) {
+        const leftPart = leftLabel.padEnd(totalWidth - 20); // Leave space for the right part
+        const rightPart = rightValue.toString().padStart(25); // Right-align the value
+        return leftPart + rightPart + "\n";
+    }
+
+    str1 += formatLine("Dep. Variable:", headers[headers.length - 1]);
+    str1 += formatLine("Model:", "OLS");
+    str1 += formatLine("Method:", "Least Squares");
+    str1 += formatLine("Date/Time:", new Date().toLocaleString());
+    str1 += formatLine("No. Observations:", n);
+    str1 += formatLine("Df Residuals:", dfr);
+    str1 += formatLine("Df Model:", dfm);
+    str1 += formatLine("Covariance Type:", "nonrobust");
+    str1 += formatLine("R-squared:", R2.toFixed(4)); // Format to 4 decimal places
+    str1 += formatLine("Adj. R-squared:", adjustedR2.toFixed(4)); // Format to 4 decimal places
+    str1 += formatLine("F-statistic:", FStatistic.toFixed(4)); // Format to 4 decimal places
+    str1 += formatLine("Durbin-Watson:", DurbinWatson.toFixed(4)); // Format to 4 decimal places
+    str1 += "==========================================================================\n";
+    str3 = "";
+    str3 += "==========================================================================\n";
+    str3 += "Notes:"
+    str3 += "[1] Special notes go here.\n";
+    str3 += "Sum of Squares for Regression (SSR): " + RSS.toString() + "\n";
+    str3 += "Total Sum of Squares (SST): " + SST.toString() + "\n";
+    str3 += "==========================================================================\n";
+    str3 += "Formula:"
+    str3 += makeFormulaString(coefficients, headers);
+    // str3 += "\nVIFs:" + VIFs.toString();
+    resultOutput.value = str1 + str2 + str3;
+}
+
+function formatTable(data) {
+    if (!Array.isArray(data) || data.length === 0 || !data.every(Array.isArray)) {
+        return "Invalid input";
+    }
+
+    // Determine the maximum width of each column
+    // const columnWidths = data[0].map((_, colIndex) => 
+    //     Math.max(...data.map(row => String(row[colIndex]).length))
+    // );
+    // Determine the maximum width of each column
+    const columnWidths = [];
+    const numColumns = data[0].length;
+
+    // Initialize columnWidths with 0
+    for (let i = 0; i < numColumns; i++) {
+        columnWidths[i] = 0;
+    }
+
+    // Calculate the maximum length for each column
+    for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+        for (let colIndex = 0; colIndex < numColumns; colIndex++) {
+            const cellLength = String(data[rowIndex][colIndex]).length;
+            if (cellLength > columnWidths[colIndex]) {
+                columnWidths[colIndex] = cellLength;
+            }
+        }
+    }
+
+    // // Create a formatted string
+    // const formattedRows = data.map(row => 
+    //     row.map((item, colIndex) => 
+    //         String(item).padEnd(columnWidths[colIndex])
+    //     ).join(' | ')
+    // );
+
+    // Create a formatted string
+    const formattedRows = [];
+    const numRows = data.length;
+
+    for (let rowIndex = 0; rowIndex < numRows; rowIndex++) {
+        const row = data[rowIndex];
+        let formattedRow = '';
+
+        for (let colIndex = 0; colIndex < row.length; colIndex++) {
+            const item = String(row[colIndex]).padEnd(columnWidths[colIndex]);
+            formattedRow += item;
+
+            // Add the separator if it's not the last column
+            if (colIndex < row.length - 1) {
+                formattedRow += ' | ';
+            }
+        }
+
+        formattedRows[rowIndex] = formattedRow;
+    }
+
+
+    // Join all rows with a newline character
+    console.log(formattedRows.join('\n'));
+    return formattedRows.join('\n');
+}
+
+document.getElementById("standardizeData").addEventListener("click", standardizeData);
+
+document.getElementById("undo").addEventListener("click", undo);
+
+function undo() {
+    document.getElementById("csvInput").value = lastInput;
+}
+
+function standardizeData() {//make this send the original dataset, don't process last column
+    let inputTextArea = document.getElementById("csvInput");
+    //store most recent for undo
+    lastInput = inputTextArea.value;
+    //get data from textarea
+    let str = inputTextArea.value;
+    let arrays = parseCSV(str);
+    arrays = convertColumnsToNumbers(arrays);
+
+    console.log("calling normalizeDataset");
+    let normalizedData = normalizeDataset(arrays);
+    console.log(normalizedData);
+
+    str = arrayToCSV(normalizedData);
+
+    inputTextArea.value = str;
+
+    //run standardize data function and get back the values
+    //new X, new y, new headers
+    // reconstruct csv from this new information
+    //place the csv string back in the textarea
+}
+
+function add2DColumnToMatrix(matrix, column) {//column is 2d
+    //matrix [[a,b,c],[1,2,3],[4,5,6]];
+    //column [[d],[7],[8]];
+    matrix = hardCopy(matrix);
+    for (let i = 0; i < matrix.length; i++) {
+        matrix[i].push(column[i][0]);
+    }
+    return matrix;
+}
+
+
+function convertArrayElementsToPrecision(array, precision) {
+    array = JSON.parse(JSON.stringify(array));
+    for (let i = 0; i < array.length; i++) {
+        array[i] = convertToPrecision(array[i], precision);
+    }
+    return array;
+}
+function convertToPrecision(number, precision) {
+    return Number(number.toPrecision(precision));
+}
+
+function makeFormulaString(coefficients, headers) {
+    // Start with the dependent variable and the equals sign
+    let formula = headers[headers.length - 1] + " = " + coefficients[0];
+
+    // Loop through the coefficients and headers to build the formula
+    for (let i = 1; i < coefficients.length; i++) {
+        formula += " + (" + coefficients[i] + ")*" + headers[i - 1];
+    }
+
+    return formula;
+}
+
+document.getElementById("help").addEventListener("click",alertHelp);
+function alertHelp(){
+    str="NOTES:\nMake sure the CSV is properly formatted.\nMake sure there is a header.\nMake sure data is numeric.\nThe last column is the dependent variable.\nThere is just one level of undo.\nNormalize data will also remove any column of constants. ";
+    //alert(str);
+    writeStringToClipboard(str);
+}
+
+</script>
+    <footer>&copy; Gary Davenport 2025</footer>
+    </main>
 <script>
 function keepOnlyASCIICharacters(input) {
     // Regular expression to match non-ASCII characters
@@ -857,6 +1248,7 @@ function extractXYFromParsedCSV(parsedData) {
   const y = [];
   const numRows = parsedData.length;
   const numColumns = parsedData[0].length;
+  let headers = parsedData[0];
   for (let i = 1; i < numRows; i++) { // Start from 1 to skip header
     const currentRow = parsedData[i];
     const currentRowData = []; // Initialize currentRowData for each row
@@ -873,7 +1265,7 @@ function extractXYFromParsedCSV(parsedData) {
     X.push(currentRowData);
   }
   X = addOnesForIntercept(X);
-  return { X, y };
+  return { X, y, headers };
 }
 
 function calculateMean(array) {
@@ -884,12 +1276,12 @@ function calculateMean(array) {
   return sum / array.length;
 }
 
-function calculateRSquared(SSR,SST) {
+function calculateRSquared(SSR, SST) {
   const R2 = 1 - (SSR / SST);
   return R2;
 }
 
-function calculateAdjustedRSquared(n,p,R2) {
+function calculateAdjustedRSquared(n, p, R2) {
   const adjustedR2 = 1 - ((1 - R2) * (n - 1)) / (n - p - 1);
   return adjustedR2;
 }
@@ -901,7 +1293,7 @@ function calculateFStatistic(X, y, coefficients) {
   const yPredicted = calculatePredictedValues(X, coefficients);
   // Calculate SST and SSR
   const SST = calculateSST(y);
-  const SSR = calculateSSR(X,y,coefficients);
+  const SSR = calculateSSR(X, y, coefficients);
   // Calculate the regression sum of squares (RSS)
   const RSS = SST - SSR;
   // Calculate the mean square for regression (MSR) and mean square for error (MSE)
@@ -955,7 +1347,7 @@ function calculateResiduals(n, y, yPredicted) {
   return residuals;
 }
 
-function calculateVariance(n,p,SSR) {
+function calculateVariance(n, p, SSR) {
   // const n = y.length; // Number of observations
   const variance = SSR / (n - p); // Residual degrees of freedom
   return variance;
@@ -972,7 +1364,7 @@ function getColumnDataFromMatrix(matrix, column = 0) {
   return columnData; // Return the array of coefficients
 }
 
-function getDiagonals(matrix){
+function getDiagonals(matrix) {
   const diag = [];
   for (let i = 0; i < matrix.length; i++) {
     diag.push(matrix[i][i]);
@@ -1005,7 +1397,7 @@ function calculateStandardErrors(X, y) {
   // Invert the resulting matrix (XT * X)
   const XT_X_inv = inverse(XT_X);
 
-  const diag=getDiagonals(XT_X_inv);
+  const diag = getDiagonals(XT_X_inv);
 
   let stdErrorOfCoefficients = new Array(diag.length);
   for (let i = 0, len = diag.length; i < len; i++) {
@@ -1017,13 +1409,13 @@ function calculateStandardErrors(X, y) {
   return stdErrorOfCoefficients;; // Return the coefficients
 }
 
-function calculateStatistics(X, y) {
-  let n=X.length;
-  let p=X[0].length;
-  let k=p-1;
-  let dfm=k;
-  let dfr=n-k-1;
-///////////////Getting coefficients/////////////////////////
+function calculateStatistics(X, y, headers) {
+  let n = X.length;
+  let p = X[0].length;
+  let k = p - 1;
+  let dfm = k;
+  let dfr = n - k - 1;
+  ///////////////Getting coefficients/////////////////////////
   // Transpose the matrix X
   let XT = transpose(X);
   // Multiply XT by X
@@ -1037,31 +1429,34 @@ function calculateStatistics(X, y) {
   let coefficients = getColumnDataFromMatrix(beta);
   ////// yPredicted used for later functions////////////////// 
   let yPredicted = calculatePredictedValues(X, coefficients);
-  let residuals=calculateResiduals(n,y,yPredicted);
-  let SSR=calculateSSR(residuals);
-  let SST=calculateSST(y);
-  let variance=calculateVariance(n,p,SSR);
-  let R2=calculateRSquared(SSR,SST);
-  let adjustedR2=calculateAdjustedRSquared(n,p,R2);
+  let residuals = calculateResiduals(n, y, yPredicted);
+  let SSR = calculateSSR(residuals);
+  let SST = calculateSST(y);
+  let variance = calculateVariance(n, p, SSR);
+  let R2 = calculateRSquared(SSR, SST);
+  let adjustedR2 = calculateAdjustedRSquared(n, p, R2);
   ////////////Get standard errors of the coefficients////////////////
-  let diag=getDiagonals(XT_X_inv);
+  let diag = getDiagonals(XT_X_inv);
   let standardErrors = new Array(diag.length);
   for (let i = 0, len = diag.length; i < len; i++) {
     let x = diag[i] * variance;
     standardErrors[i] = Math.sqrt(x);
   }
-  let tValues=calculateTValues(coefficients,standardErrors);
+  let tValues = calculateTValues(coefficients, standardErrors);
   /////RSS is SSR in other programs
   let RSS = SST - SSR;
   // Calculate the mean square for regression (MSR) and mean square for error (MSE)
-  let MSR = RSS / (p-1); // Regression degrees of freedom
+  let MSR = RSS / (p - 1); // Regression degrees of freedom
   let MSE = SSR / (n - p); // Residual degrees of freedom
   // Calculate F-statistic
   let FStatistic = MSR / MSE;
-  let DurbinWatson=calculateDurbinWatson(SSR,residuals);
-  let approximatePValues=calculatePValues(n,tValues);
-  let approximateCIs=calculateConfidenceIntervals(n, coefficients, standardErrors);
-  return {residuals,coefficients,standardErrors,SSR,SST,variance,R2,adjustedR2,tValues,FStatistic,RSS,DurbinWatson,approximatePValues,approximateCIs,n,dfm,dfr}; // Return the coefficients
+  let DurbinWatson = calculateDurbinWatson(SSR, residuals);
+  let approximatePValues = calculatePValues(n, tValues);
+  let approximateCIs = calculateConfidenceIntervals(n, coefficients, standardErrors);
+  return { residuals, coefficients, standardErrors, SSR, SST, variance, R2, adjustedR2, tValues, FStatistic, RSS, DurbinWatson, approximatePValues, approximateCIs, n, dfm, dfr, headers }; // Return the coefficients
+}
+function hardCopy(arr) {
+  return (JSON.parse(JSON.stringify(arr)));
 }
 
 // Function to calculate the critical t-value for a given alpha and degrees of freedom
@@ -1101,7 +1496,7 @@ function calculateConfidenceIntervals(n, coefficients, standardErrors) {
   return confidenceIntervals; // Return the array of confidence intervals
 }
 
-function calculateDurbinWatson(SSR,residuals) {
+function calculateDurbinWatson(SSR, residuals) {
   const n = residuals.length;
   let sumOfSquaresDiff = 0;
   for (let i = 1; i < n; i++) {
@@ -1162,238 +1557,151 @@ function tCDF(tStatistic, df) {
   }
 }
 
-function calculatePValue(n,p,tStatistic) {
+function calculatePValue(n, p, tStatistic) {
   // Calculate degrees of freedom = number of rows - number of independent variables
-  const df = n-p;
+  const df = n - p;
   // Calculate the p-value using the tCDF function
   const pValue = 2 * (1 - tCDF(Math.abs(tStatistic), df));
   return pValue;
 }
 
-function calculatePValues(n,tStatistics) {
+function calculatePValues(n, tStatistics) {
   const pValues = [];
-  let p=tStatistics.length;
+  let p = tStatistics.length;
   for (let i = 0; i < tStatistics.length; i++) {
-    const pValue = calculatePValue(n,p,tStatistics[i]);
+    const pValue = calculatePValue(n, p, tStatistics[i]);
     pValues.push(pValue);
   }
   return pValues;
 }
-</script>
-<script>
-// Copyright 2025 gary
-// 
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-// 
-//     https://www.apache.org/licenses/LICENSE-2.0
-// 
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 
-document.getElementById('loadButton').addEventListener('click', function () {
-    const fileInput = document.getElementById('fileInput');
-    fileInput.click(); // Trigger the file input click to open the file dialog
+function getColumnAs2DArray(array2D, columnIndex) {
+  // Initialize an empty array to hold the column values as a 2D array
+  var column = [];
 
-    // Add an event listener to handle the file selection
-    fileInput.addEventListener('change', function () {
-        if (fileInput.files.length === 0) {
-            alert('Please select a CSV file to load.');
-            return;
-        }
-        const file = fileInput.files[0];
-        const reader = new FileReader();
-        reader.onload = function (event) {
-            const csvInput = document.getElementById('csvInput');
-            csvInput.value = event.target.result; // Set the content of the csvInput to the file content
-        };
-        reader.readAsText(file);
-    }, { once: true }); // Use { once: true } to ensure the event listener is removed after it runs
-});
+  // Loop through each row of the 2D array
+  for (var i = 0; i < array2D.length; i++) {
+    // Check if the current row has enough columns
+    if (array2D[i].length > columnIndex) {
+      // Create a new array for the current row's column value
+      var row = [];
+      row[0] = array2D[i][columnIndex]; // Add the value at the specified column index
+      column[column.length] = row; // Add the single row array to the column array
+    }
+  }
 
-document.getElementById('saveButton').addEventListener('click', function () {
-    const resultOutput = document.getElementById('resultOutput').value;
-    const theDependentVariable = document.getElementById("hiddenName").value; // Replace with your actual dependent variable
-    const today = new Date();
-    const formattedDate = today.toISOString().split('T')[0]; // Format: YYYY-MM-DD
-    const filename = `regression-${theDependentVariable}-${formattedDate}.txt`;
-
-    const blob = new Blob([resultOutput], { type: 'text/plain' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-});
-
-document.getElementById('copyButton').addEventListener('click', function () {
-    const resultOutput = document.getElementById('resultOutput');
-
-    // Use the Clipboard API to write to the clipboard
-    navigator.clipboard.writeText(resultOutput.value)
-        .then(() => {
-            // Create a message with the contents
-            const message = `Copied to clipboard:\n${resultOutput.value}`;
-            alert(message);
-        })
-        .catch(err => {
-            console.error('Failed to copy: ', err);
-        });
-});
-
-document.getElementById('clearButton').addEventListener('click', function () {
-    // Clear the values of the specified elements
-    document.getElementById('fileInput').value = '';
-    document.getElementById('csvInput').value = '';
-    document.getElementById('resultOutput').value = '';
-});
-
-window.onbeforeunload = askCloseWindow;
-function askCloseWindow() {
-    return "Are you sure?";
+  return column;
 }
 
-let computeButton = document.getElementById("computeButton");
-computeButton.addEventListener("click", compute);
+function removeColumnFrom2DArray(array2D, columnIndex) {
+  // Initialize an empty array to hold the new matrix
+  var newMatrix = [];
 
-function compute() {
-    let resultOutput = document.getElementById("resultOutput");
-    let csvContents = document.getElementById("csvInput").value;
-    let arrays = parseCSV(csvContents);
-    arrays = convertColumnsToNumbers(arrays);
-    let headers = arrays[0];
-    document.getElementById("hiddenName").value = headers[headers.length - 1];
-    resultOutput.value = headers.toString();
-    let extractedData = extractXYFromParsedCSV(arrays);
-    let X = extractedData["X"];
-    let y = extractedData["y"];
-    let resultObject = calculateStatistics(X, y);
-    let coefficients = resultObject["coefficients"];
-    coefficients = convertArrayElementsToPrecision(coefficients, 4);
-    let standardErrors = resultObject["standardErrors"];
-    standardErrors = convertArrayElementsToPrecision(standardErrors, 4);
-    let tValues = resultObject["tValues"];
-    tValues = convertArrayElementsToPrecision(tValues, 4);
-    let approximatePValues = resultObject["approximatePValues"];
-    approximatePValues = convertArrayElementsToPrecision(approximatePValues, 2);
-    let approximateCIs = resultObject["approximateCIs"];
-    console.log(approximateCIs);
-    for (let i = 0; i < approximateCIs.length; i++) {
-        approximateCIs[i][0] = convertToPrecision(approximateCIs[i][0], 2);
-        approximateCIs[i][1] = convertToPrecision(approximateCIs[i][1], 2);
-    }
-    let len = coefficients.length;
-    let str2 = "";
-    let coefNames = [];
-    coefNames.push("intercept");
-    for (let i = 0; i < headers.length - 1; i++) {//the last header is the dependent variable
-        coefNames.push(headers[i]);
-    }
-    const columnHeaders = [
-        { name: "COEFFICIENTS", width: 15 },
-        { name: "VALUE", width: 10 },
-        { name: "STDERR", width: 10 },
-        { name: "TSTAT", width: 10 },
-        { name: "PVAL", width: 12 },
-        { name: "CI(LOW)", width: 10 },
-        { name: "CI(HIGH)", width: 10 }
-    ];
-    // Create the header string by padding each header name
-    let headerString = columnHeaders.map(header => header.name.padEnd(header.width)).join('') + "\n";
-    str2 += headerString;
-    str2 += "--------------------------------------------------------------------------\n";
-    // Define the widths for the columns (same as in columnHeaders)
-    const coefWidth = columnHeaders[0].width; // Width for coefficients
-    const valueWidth = columnHeaders[1].width; // Width for values
-    const stderrWidth = columnHeaders[2].width; // Width for standard errors
-    const tstatWidth = columnHeaders[3].width; // Width for t-statistics
-    const pvalWidth = columnHeaders[4].width; // Width for p-values
-    const ciWidth = columnHeaders[5].width; // Width for confidence intervals
-    for (let i = 0; i < len; i++) {
-        str2 += coefNames[i].padEnd(coefWidth) +
-            coefficients[i].toFixed(4).padEnd(valueWidth) +
-            standardErrors[i].toFixed(4).padEnd(stderrWidth) +
-            tValues[i].toFixed(4).padEnd(tstatWidth) +
-            approximatePValues[i].toExponential(2).padEnd(pvalWidth) +
-            approximateCIs[i][0].toFixed(4).padEnd(ciWidth) +
-            approximateCIs[i][1].toFixed(4) + "\n"; // No padding for the last column
-    }
-    let SSR = resultObject["RSS"]; // Sum of Squares Regression
-    let SST = resultObject["SST"]; // Total Sum of Squares
-    let R2 = resultObject["R2"]; // R-squared
-    let adjustedR2 = resultObject["adjustedR2"]; // Adjusted R-squared
-    let FStatistic = resultObject["FStatistic"]; // F-statistic
-    let RSS = resultObject["RSS"]; // Residual Sum of Squares
-    let DurbinWatson = resultObject["DurbinWatson"]; // Durbin-Watson statistic
-    let n = resultObject["n"]; // Number of observations
-    let dfm = resultObject["dfm"]; // Degrees of freedom for the model
-    let dfr = resultObject["dfr"]; // Degrees of freedom for residuals
-    let str1 = "OLS Regression Results\n";
-    str1 += "==========================================================================\n";
+  // Loop through each row of the 2D array
+  for (var i = 0; i < array2D.length; i++) {
+    // Initialize a new row for the new matrix
+    var newRow = [];
 
-    const totalWidth = 40; // Adjust this width as needed
-
-    // Function to format each line with left and right alignment
-    function formatLine(leftLabel, rightValue) {
-        const leftPart = leftLabel.padEnd(totalWidth - 20); // Leave space for the right part
-        const rightPart = rightValue.toString().padStart(25); // Right-align the value
-        return leftPart + rightPart + "\n";
+    // Loop through each column of the current row
+    for (var j = 0; j < array2D[i].length; j++) {
+      // Check if the current column index is not the one to be removed
+      if (j !== columnIndex) {
+        // Add the value to the new row
+        newRow[newRow.length] = array2D[i][j];
+      }
     }
 
-    str1 += formatLine("Dep. Variable:", headers[headers.length - 1]);
-    str1 += formatLine("Model:", "OLS");
-    str1 += formatLine("Method:", "Least Squares");
-    str1 += formatLine("Date/Time:", new Date().toLocaleString());
-    str1 += formatLine("No. Observations:", n);
-    str1 += formatLine("Df Residuals:", dfr);
-    str1 += formatLine("Df Model:", dfm);
-    str1 += formatLine("Covariance Type:", "nonrobust");
-    str1 += formatLine("R-squared:", R2.toFixed(4)); // Format to 4 decimal places
-    str1 += formatLine("Adj. R-squared:", adjustedR2.toFixed(4)); // Format to 4 decimal places
-    str1 += formatLine("F-statistic:", FStatistic.toFixed(4)); // Format to 4 decimal places
-    str1 += formatLine("Durbin-Watson:", DurbinWatson.toFixed(4)); // Format to 4 decimal places
-    str1 += "==========================================================================\n";
-    
-    str3 = "";
-    str3 += "==========================================================================\n";
-    str3 += "Notes:"
-    str3 += "[1] Special notes go here.\n";
-    str3 += "Sum of Squares for Regression (SSR): " + RSS.toString() + "\n";
-    str3 += "Total Sum of Squares (SST): " + SST.toString() + "\n";
-    str3 += "==========================================================================\n";
-    str3 += "Formula:"
-    str3+=makeFormulaString(coefficients,headers);
-    resultOutput.value = str1 + str2 + str3;
+    // Add the new row to the new matrix
+    newMatrix[newMatrix.length] = newRow;
+  }
+
+  return newMatrix;
 }
 
-function convertArrayElementsToPrecision(array, precision) {
-    array = JSON.parse(JSON.stringify(array));
-    for (let i = 0; i < array.length; i++) {
-        array[i] = convertToPrecision(array[i], precision);
-    }
-    return array;
+function calculateVIF(X, headerIndex) {
+  let index = headerIndex + 1;
+  //get the column at index out of the 2d X array and make it the new y
+  let newy = getColumnAs2DArray(hardCopy(X), index);
+  //remove the column at the index out of the dataset
+  let newX = removeColumnFrom2DArray(hardCopy(X), index);
+  console.log(newX);
+  let R2 = calculateStatistics(newX, newy)["R2"];
+  console.log("R2", typeof (R2));
+  let VIF = 1 / (1 - R2);
+  console.log("VIF", typeof (VIF));
+  //VIF = VIF.toPrecision(4);
+  console.log("VIF", typeof (VIF));
+  return VIF;
 }
-function convertToPrecision(number, precision) {
-    return Number(number.toPrecision(precision));
+
+function calculateVIFs(X, headers) {
+  //headers have nothing for intercept and y from dataset vif doesnt get calculated
+  let VIFs = [];
+  for (let headerIndex = 0; headerIndex < headers.length - 1; headerIndex++) {
+    let VIF = calculateVIF(X, headerIndex);
+    console.log(VIF);
+    VIFs.push(VIF);
+  }
+  return VIFs;
 }
 
-function makeFormulaString(coefficients, headers) {
-    // Start with the dependent variable and the equals sign
-    let formula = headers[headers.length - 1] + " = " + coefficients[0];
+function normalizeDataset(dataset) {
+  // Deep copy the original array
+  dataset=hardCopy(dataset);
+  headers = dataset.shift();
+  let columnsToRemove = [];
+  // Loop through each column
+  for (let j = 0; j < dataset[0].length - 1; j++) {//don't normalize last column which is outcome variable.
 
-    // Loop through the coefficients and headers to build the formula
-    for (let i = 1; i < coefficients.length; i++) {
-        formula += " + (" + coefficients[i] + ")*" + headers[i - 1];
+    // Calculate the mean and standard deviation for the column
+    let mean = 0;
+    let stdDev = 0;
+    let columnOfconstants=true;
+
+   // Check for column of constants
+   initialValue=dataset[0][j];
+   for (let i = 0; i < dataset.length; i++) {
+    if (dataset[i][j]!==initialValue){
+      columnOfconstants=false;
+    }
+  }
+
+
+    // Calculate mean
+    for (let i = 0; i < dataset.length; i++) {
+      mean += dataset[i][j];
+    }
+    mean /= dataset.length;
+
+    // Calculate standard deviation
+    for (let i = 0; i < dataset.length; i++) {
+      stdDev += Math.pow(dataset[i][j] - mean, 2);
+    }
+    stdDev = Math.sqrt(stdDev / dataset.length);
+
+    if (columnOfconstants){
+      columnsToRemove.push(j);
+    }else {
+      // Normalize the column
+      for (let i = 0; i < dataset.length; i++) {
+        dataset[i][j] = (dataset[i][j] - mean) / stdDev;
+      }
     }
 
-    return formula;
+  }
+  
+  console.log("columnsToRemove",columnsToRemove);
+  for (let i=columnsToRemove.length-1;i>=0;i--){
+    dataset=removeColumnFrom2DArray(dataset,columnsToRemove[i]);//remove data column
+    headers.splice(columnsToRemove[i],1);//in place removal
+  }
+
+  dataset.unshift(headers);
+
+  return dataset;
 }
 
 </script>
-    <footer>&copy; Gary Davenport 2025</footer>
+
 </body>
 </html>
-
